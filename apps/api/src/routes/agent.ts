@@ -18,18 +18,17 @@ router.post('/apply', async (req: Request, res: Response) => {
   }
 
   try {
-    // Upsert — allow re-application if previously rejected
-    const [application] = await sql`
+    await sql`
       INSERT INTO agent_applications (user_id, id_image_url, selfie_image_url, mpesa_number, status)
       VALUES (${userId}, ${idImageUrl}, ${selfieImageUrl}, ${mpesaNumber}, 'pending')
       ON CONFLICT (user_id) DO UPDATE
-        SET id_image_url    = EXCLUDED.id_image_url,
-            selfie_image_url = EXCLUDED.selfie_image_url,
-            mpesa_number     = EXCLUDED.mpesa_number,
+        SET id_image_url     = ${idImageUrl},
+            selfie_image_url = ${selfieImageUrl},
+            mpesa_number     = ${mpesaNumber},
             status           = 'pending',
-            updated_at       = NOW()
-      RETURNING *
+            updated_at       = datetime('now')
     `;
+    const [application] = await sql`SELECT * FROM agent_applications WHERE user_id = ${userId}`;
     res.status(201).json(application);
   } catch (err) {
     console.error(err);

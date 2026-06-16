@@ -1,14 +1,15 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
 import { betterAuth } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
-import ws from 'ws';
+import { libsqlAdapter } from 'better-auth/adapters/libsql';
+import { createClient } from '@libsql/client';
 
-neonConfig.webSocketConstructor = ws;
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const client = createClient({
+  url: process.env.LIBSQL_URL!,
+  authToken: process.env.LIBSQL_AUTH_TOKEN!,
+});
 
 export const auth = betterAuth({
-  database: pool,
+  database: libsqlAdapter(client),
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
   trustedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean),
