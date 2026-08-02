@@ -52,12 +52,12 @@ async function ensureSchema() {
         errand_id  TEXT PRIMARY KEY,
         latitude   REAL NOT NULL,
         longitude  REAL NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TEXT NOT NULL
       )
     `;
     console.log('Schema ready (errand_locations)');
   } catch (err) {
-    console.error('Schema migration failed:', err);
+    console.error('Schema migration failed (location will use memory fallback):', err);
   }
 }
 

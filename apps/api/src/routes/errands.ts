@@ -3,6 +3,10 @@ import sql from '../db';
 
 const router = Router();
 
+// In-memory fallback if Turso DDL/DML for locations fails
+const locationStore = new Map<string, { latitude: number; longitude: number; updated_at: string }>();
+
+
 // GET /api/errands — list all errands
 router.get('/', async (_req: Request, res: Response) => {
   try {
@@ -16,9 +20,9 @@ router.get('/', async (_req: Request, res: Response) => {
       ORDER BY e.created_at DESC
     `;
     res.json(errands);
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch errands' });
+    res.status(500).json({ error: 'Failed to fetch errands', detail: String(err?.message ?? err) });
   }
 });
 
@@ -125,6 +129,53 @@ router.post('/:id/location', async (req: Request, res: Response) => {
   }
 
   try {
+    const [errand] = await sql`SELECT id, agent_id, status FROM errands WHERE id = ${errandId}`;
+    if (!errand) {
+      // Still allow storing location in memory for demo/tracking if row missing briefly
+      const updated_at = new Date().toISOString();
+      locationStore.set(errandId, { latitude: lat, longitude: lng, updated_at });
+      res.status(404).json({ error: 'Errand not found' });
+      return;
+    }
+    if (errand.agent_id && agentId && errand.agent_id !== agentId) {
+      res.status(403).json({ error: 'Only the assigned agent can update location' });
+      return;
+    }
+
+    const updated_at = new Date().toISOString();
+    locationStore.set(errandId, { latitude: lat, longitude: lng, updated_at });
+
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS errand_locations (
+          errand_id  TEXT PRIMARY KEY,
+          latitude   REAL NOT NULL,
+          longitude  REAL NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `;
+      await sql`DELETE FROM errand_locations WHERE errand_id = ${errandId}`;
+      await sql`
+        INSERT INTO errand_locations (errand_id, latitude, longitude, updated_at)
+        VALUES (${errandId}, ${lat}, ${lng}, ${updated_at})
+      `;
+    } catch (dbErr) {
+      console.warn('Persisting location to DB failed, using memory:', dbErr);
+    }
+
+    res.json({ ok: true, latitude: lat, longitude: lng, updated_at });
+  } catch (err: any) {
+    // If DB is down entirely, still keep memory location for this process
+    const updated_at = new Date().toISOString();
+    locationStore.set(errandId, { latitude: lat, longitude: lng, updated_at });
+    console.error('location update error:', err);
+    res.json({ ok: true, latitude: lat, longitude: lng, updated_at, ephemeral: true });
+  }
+});
+    return;
+  }
+
+  try {
     await sql`
       CREATE TABLE IF NOT EXISTS errand_locations (
         errand_id  TEXT PRIMARY KEY,
@@ -160,22 +211,50 @@ router.post('/:id/location', async (req: Request, res: Response) => {
 
 // GET /api/errands/:id/location — poll agent GPS for live map
 router.get('/:id/location', async (req: Request, res: Response) => {
+  const errandId = req.params.id;
   try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS errand_locations (
-        errand_id  TEXT PRIMARY KEY,
-        latitude   REAL NOT NULL,
-        longitude  REAL NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `;
-    const [loc] = await sql`
-      SELECT latitude, longitude, updated_at
-      FROM errand_locations
-      WHERE errand_id = ${req.params.id}
-    `;
-    if (!loc) {
-      res.json({ latitude: null, longitude: null, updated_at: null });
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS errand_locations (
+          errand_id  TEXT PRIMARY KEY,
+          latitude   REAL NOT NULL,
+          longitude  REAL NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `;
+      const [loc] = await sql`
+        SELECT latitude, longitude, updated_at
+        FROM errand_locations
+        WHERE errand_id = ${errandId}
+      `;
+      if (loc) {
+        res.json({
+          latitude: Number(loc.latitude),
+          longitude: Number(loc.longitude),
+          updated_at: loc.updated_at,
+        });
+        return;
+      }
+    } catch (dbErr) {
+      console.warn('DB location read failed, falling back to memory:', dbErr);
+    }
+
+    const mem = locationStore.get(errandId);
+    if (mem) {
+      res.json(mem);
+      return;
+    }
+    res.json({ latitude: null, longitude: null, updated_at: null });
+  } catch (err: any) {
+    console.error(err);
+    const mem = locationStore.get(errandId);
+    if (mem) {
+      res.json(mem);
+      return;
+    }
+    res.status(500).json({ error: 'Failed to fetch location', detail: String(err?.message ?? err) });
+  }
+});
       return;
     }
     res.json({
