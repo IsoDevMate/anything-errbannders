@@ -116,13 +116,24 @@ router.post('/update', async (req: Request, res: Response) => {
 router.post('/:id/location', async (req: Request, res: Response) => {
   const { latitude, longitude, agentId } = req.body;
   const errandId = req.params.id;
+  const lat = typeof latitude === 'string' ? parseFloat(latitude) : latitude;
+  const lng = typeof longitude === 'string' ? parseFloat(longitude) : longitude;
 
-  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     res.status(400).json({ error: 'latitude and longitude (numbers) are required' });
     return;
   }
 
   try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS errand_locations (
+        errand_id  TEXT PRIMARY KEY,
+        latitude   REAL NOT NULL,
+        longitude  REAL NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `;
+
     const [errand] = await sql`SELECT id, agent_id, status FROM errands WHERE id = ${errandId}`;
     if (!errand) {
       res.status(404).json({ error: 'Errand not found' });
@@ -133,25 +144,31 @@ router.post('/:id/location', async (req: Request, res: Response) => {
       return;
     }
 
+    const updatedAt = new Date().toISOString();
+    await sql`DELETE FROM errand_locations WHERE errand_id = ${errandId}`;
     await sql`
       INSERT INTO errand_locations (errand_id, latitude, longitude, updated_at)
-      VALUES (${errandId}, ${latitude}, ${longitude}, datetime('now'))
-      ON CONFLICT(errand_id) DO UPDATE SET
-        latitude = excluded.latitude,
-        longitude = excluded.longitude,
-        updated_at = datetime('now')
+      VALUES (${errandId}, ${lat}, ${lng}, ${updatedAt})
     `;
 
-    res.json({ ok: true, latitude, longitude });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to update location' });
+    res.json({ ok: true, latitude: lat, longitude: lng });
+  } catch (err: any) {
+    console.error('location update error:', err);
+    res.status(500).json({ error: 'Failed to update location', detail: String(err?.message ?? err) });
   }
 });
 
 // GET /api/errands/:id/location — poll agent GPS for live map
 router.get('/:id/location', async (req: Request, res: Response) => {
   try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS errand_locations (
+        errand_id  TEXT PRIMARY KEY,
+        latitude   REAL NOT NULL,
+        longitude  REAL NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `;
     const [loc] = await sql`
       SELECT latitude, longitude, updated_at
       FROM errand_locations
@@ -166,9 +183,9 @@ router.get('/:id/location', async (req: Request, res: Response) => {
       longitude: Number(loc.longitude),
       updated_at: loc.updated_at,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch location' });
+    res.status(500).json({ error: 'Failed to fetch location', detail: String(err?.message ?? err) });
   }
 });
 
