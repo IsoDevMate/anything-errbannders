@@ -73,4 +73,22 @@ router.post('/approve', async (req: Request, res: Response) => {
   }
 });
 
+
+// GET /api/agent/pending — list pending applications (admin)
+router.get('/pending', async (_req: Request, res: Response) => {
+  try {
+    const rows = await sql`
+      SELECT a.*, u.name AS user_name, u.email AS user_email
+      FROM agent_applications a
+      LEFT JOIN "user" u ON a.user_id = u.id
+      WHERE a.status = 'pending'
+      ORDER BY a.created_at ASC
+    `;
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch pending applications' });
+  }
+});
+
 export default router;
