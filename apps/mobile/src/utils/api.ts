@@ -24,8 +24,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
+  const text = await res.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      throw new Error('Invalid JSON response from API');
+    }
+  }
+  if (!res.ok) {
+    const errMsg = (data as { error?: string } | null)?.error ?? `HTTP ${res.status}`;
+    throw new Error(errMsg);
+  }
   return data as T;
 }
 
@@ -36,8 +48,8 @@ export interface Errand {
   title: string;
   description: string | null;
   category: string;
-  budget: string;
-  fee: string;
+  budget: string | number;
+  fee: string | number;
   sender_id: string;
   agent_id: string | null;
   pickup_location: string | null;
@@ -49,16 +61,22 @@ export interface Errand {
   agent_name: string | null;
 }
 
+export interface AgentLocation {
+  latitude: number | null;
+  longitude: number | null;
+  updated_at: string | null;
+}
+
 export interface Wallet {
   user_id: string;
-  balance: string;
+  balance: string | number;
   created_at: string;
 }
 
 export interface Transaction {
   id: string;
   wallet_id: string;
-  amount: string;
+  amount: string | number;
   type: string;
   errand_id: string | null;
   created_at: string;
@@ -69,11 +87,18 @@ export interface WalletData {
   transactions: Transaction[];
 }
 
+export function money(value: string | number | null | undefined): number {
+  const n = typeof value === 'number' ? value : parseFloat(String(value ?? 0));
+  return Number.isFinite(n) ? n : 0;
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 
 export const api = {
   errands: {
     list: () => request<Errand[]>('/api/errands'),
+
+    get: (id: string) => request<Errand>(`/api/errands/${encodeURIComponent(id)}`),
 
     create: (body: {
       title: string;
@@ -93,6 +118,15 @@ export const api = {
       proofImageUrl?: string;
     }) =>
       request<Errand>('/api/errands/update', { method: 'POST', body: JSON.stringify(body) }),
+
+    updateLocation: (errandId: string, body: { latitude: number; longitude: number; agentId?: string }) =>
+      request<{ ok: boolean; latitude: number; longitude: number }>(
+        `/api/errands/${encodeURIComponent(errandId)}/location`,
+        { method: 'POST', body: JSON.stringify(body) }
+      ),
+
+    getLocation: (errandId: string) =>
+      request<AgentLocation>(`/api/errands/${encodeURIComponent(errandId)}/location`),
   },
 
   wallet: {
@@ -126,6 +160,8 @@ export const api = {
       request<{ id: string; status: string }>('/api/agent/apply', { method: 'POST', body: JSON.stringify(body) }),
 
     status: (userId: string) =>
-      request<{ status: 'none' | 'pending' | 'approved' | 'rejected' }>(`/api/agent/status?userId=${encodeURIComponent(userId)}`),
+      request<{ status: 'none' | 'pending' | 'approved' | 'rejected' }>(
+        `/api/agent/status?userId=${encodeURIComponent(userId)}`
+      ),
   },
 };
