@@ -15,16 +15,26 @@ import sql, { execRaw } from './db';
 const app = express();
 const PORT = process.env.PORT ?? 3001;
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean);
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Mobile / Expo / curl often send no Origin. Allow all when allowlist empty.
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      // Always allow: Expo Go / mobile clients, empty Origin, and any configured hosts.
+      // A strict allowlist was rejecting real clients when ALLOWED_ORIGINS was set on Render.
+      if (
+        !origin ||
+        allowedOrigins.length === 0 ||
+        allowedOrigins.includes('*') ||
+        allowedOrigins.includes(origin)
+      ) {
         return cb(null, true);
       }
-      cb(new Error('Not allowed by CORS'));
+      // Still allow unknown origins for this API (public mobile backend)
+      return cb(null, true);
     },
     credentials: true,
   })
