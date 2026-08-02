@@ -111,4 +111,89 @@ router.post('/update', async (req: Request, res: Response) => {
   }
 });
 
+
+// POST /api/errands/:id/location — agent pushes live GPS coords
+router.post('/:id/location', async (req: Request, res: Response) => {
+  const { latitude, longitude, agentId } = req.body;
+  const errandId = req.params.id;
+
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    res.status(400).json({ error: 'latitude and longitude (numbers) are required' });
+    return;
+  }
+
+  try {
+    const [errand] = await sql`SELECT id, agent_id, status FROM errands WHERE id = ${errandId}`;
+    if (!errand) {
+      res.status(404).json({ error: 'Errand not found' });
+      return;
+    }
+    if (errand.agent_id && agentId && errand.agent_id !== agentId) {
+      res.status(403).json({ error: 'Only the assigned agent can update location' });
+      return;
+    }
+
+    await sql`
+      INSERT INTO errand_locations (errand_id, latitude, longitude, updated_at)
+      VALUES (${errandId}, ${latitude}, ${longitude}, datetime('now'))
+      ON CONFLICT(errand_id) DO UPDATE SET
+        latitude = excluded.latitude,
+        longitude = excluded.longitude,
+        updated_at = datetime('now')
+    `;
+
+    res.json({ ok: true, latitude, longitude });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update location' });
+  }
+});
+
+// GET /api/errands/:id/location — poll agent GPS for live map
+router.get('/:id/location', async (req: Request, res: Response) => {
+  try {
+    const [loc] = await sql`
+      SELECT latitude, longitude, updated_at
+      FROM errand_locations
+      WHERE errand_id = ${req.params.id}
+    `;
+    if (!loc) {
+      res.json({ latitude: null, longitude: null, updated_at: null });
+      return;
+    }
+    res.json({
+      latitude: Number(loc.latitude),
+      longitude: Number(loc.longitude),
+      updated_at: loc.updated_at,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch location' });
+  }
+});
+
+
+// GET /api/errands/:id — fetch a single errand
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const [errand] = await sql`
+      SELECT e.*,
+             s.name AS sender_name,
+             a.name AS agent_name
+      FROM errands e
+      LEFT JOIN "user" s ON e.sender_id = s.id
+      LEFT JOIN "user" a ON e.agent_id  = a.id
+      WHERE e.id = ${req.params.id}
+    `;
+    if (!errand) {
+      res.status(404).json({ error: 'Errand not found' });
+      return;
+    }
+    res.json(errand);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch errand' });
+  }
+});
+
 export default router;

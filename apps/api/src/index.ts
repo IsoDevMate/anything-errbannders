@@ -10,6 +10,7 @@ import errandsRouter from './routes/errands';
 import walletRouter from './routes/wallet';
 import sessionRouter from './routes/session';
 import agentRouter from './routes/agent';
+import sql from './db';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -43,8 +44,27 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 const swaggerDocument = YAML.load(path.join(__dirname, 'openapi.yaml'));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-app.listen(PORT, () => {
-  console.log(`API server running on http://localhost:${PORT}`);
+
+async function ensureSchema() {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS errand_locations (
+        errand_id  TEXT PRIMARY KEY,
+        latitude   REAL NOT NULL,
+        longitude  REAL NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `;
+    console.log('Schema ready (errand_locations)');
+  } catch (err) {
+    console.error('Schema migration failed:', err);
+  }
+}
+
+ensureSchema().then(() => {
+  app.listen(PORT, () => {
+    console.log(`API server running on http://localhost:${PORT}`);
+  });
 });
 
 export default app;

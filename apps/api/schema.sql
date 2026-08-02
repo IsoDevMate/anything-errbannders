@@ -57,3 +57,10 @@ CREATE TABLE IF NOT EXISTS mpesa_requests (
 -- Add is_agent column to better-auth user table if not exists
 -- Run this separately after better-auth migrate:
 -- ALTER TABLE user ADD COLUMN is_agent INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS errand_locations (
+  errand_id  TEXT PRIMARY KEY,
+  latitude   REAL NOT NULL,
+  longitude  REAL NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
