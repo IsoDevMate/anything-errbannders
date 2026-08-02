@@ -27,8 +27,20 @@ router.get('/', async (_req: Request, res: Response) => {
 
 // POST /api/errands — create an errand (escrows budget+fee from sender wallet)
 router.post('/', async (req: Request, res: Response) => {
-  const { title, description, budget, fee, sender_id, pickup_location, delivery_location, category } =
-    req.body;
+  const {
+    title,
+    description,
+    budget,
+    fee,
+    sender_id,
+    pickup_location,
+    delivery_location,
+    pickup_lat,
+    pickup_lng,
+    delivery_lat,
+    delivery_lng,
+    category,
+  } = req.body;
 
   if (!title || !budget || !fee || !sender_id) {
     res.status(400).json({ error: 'title, budget, fee and sender_id are required' });
@@ -45,9 +57,18 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const [errand] = await sql`
-      INSERT INTO errands (title, description, budget, fee, sender_id, pickup_location, delivery_location, category, status)
-      VALUES (${title}, ${description ?? null}, ${budget}, ${fee}, ${sender_id},
-              ${pickup_location ?? null}, ${delivery_location ?? null}, ${category ?? 'Shopping'}, 'pending')
+      INSERT INTO errands (
+        title, description, budget, fee, sender_id,
+        pickup_location, delivery_location,
+        pickup_lat, pickup_lng, delivery_lat, delivery_lng,
+        category, status
+      )
+      VALUES (
+        ${title}, ${description ?? null}, ${budget}, ${fee}, ${sender_id},
+        ${pickup_location ?? null}, ${delivery_location ?? null},
+        ${pickup_lat ?? null}, ${pickup_lng ?? null}, ${delivery_lat ?? null}, ${delivery_lng ?? null},
+        ${category ?? 'Shopping'}, 'pending'
+      )
       RETURNING *
     `;
 

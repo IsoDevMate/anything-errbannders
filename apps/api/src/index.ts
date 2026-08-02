@@ -10,6 +10,7 @@ import errandsRouter from './routes/errands';
 import walletRouter from './routes/wallet';
 import sessionRouter from './routes/session';
 import agentRouter from './routes/agent';
+import reviewsRouter from './routes/reviews';
 import sql, { execRaw } from './db';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/errands', errandsRouter);
 app.use('/api/wallet', walletRouter);
 app.use('/api/session', sessionRouter);
 app.use('/api/agent', agentRouter);
+app.use('/api/reviews', reviewsRouter);
 
 app.get('/health', (_req, res) => res.json({ ok: true, db: 'ready' }));
 
@@ -152,17 +154,35 @@ async function ensureSchema() {
       longitude REAL NOT NULL,
       updated_at TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS reviews (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      errand_id TEXT,
+      from_user_id TEXT NOT NULL,
+      to_user_id TEXT NOT NULL,
+      rating REAL NOT NULL,
+      comment TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const statement of statements) {
     await execRaw(statement);
   }
 
-  // Safe additive column for older DBs
-  try {
-    await execRaw(`ALTER TABLE "user" ADD COLUMN is_agent INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // column already exists
+  // Safe additive columns for older DBs
+  const alters = [
+    `ALTER TABLE "user" ADD COLUMN is_agent INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE errands ADD COLUMN pickup_lat REAL`,
+    `ALTER TABLE errands ADD COLUMN pickup_lng REAL`,
+    `ALTER TABLE errands ADD COLUMN delivery_lat REAL`,
+    `ALTER TABLE errands ADD COLUMN delivery_lng REAL`,
+  ];
+  for (const statement of alters) {
+    try {
+      await execRaw(statement);
+    } catch {
+      // column already exists
+    }
   }
 
   console.log('Schema ready');
