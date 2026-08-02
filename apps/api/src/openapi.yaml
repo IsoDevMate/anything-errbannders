@@ -1,0 +1,478 @@
+openapi: 3.0.3
+info:
+  title: ErrandEconomy API
+  version: 1.0.0
+  description: REST API for the ErrandEconomy app — errands, wallet (M-Pesa), and agent management.
+
+servers:
+  - url: http://localhost:3001
+    description: Local dev
+  - url: https://your-api-domain.com
+    description: Production
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Errand:
+      type: object
+      properties:
+        id:          { type: string }
+        title:       { type: string }
+        description: { type: string, nullable: true }
+        category:    { type: string, example: Shopping }
+        budget:      { type: number }
+        fee:         { type: number }
+        sender_id:   { type: string }
+        agent_id:    { type: string, nullable: true }
+        pickup_location:   { type: string, nullable: true }
+        delivery_location: { type: string, nullable: true }
+        status:      { type: string, example: pending }
+        proof_image_url: { type: string, nullable: true }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+        sender_name: { type: string, nullable: true }
+        agent_name:  { type: string, nullable: true }
+
+    Wallet:
+      type: object
+      properties:
+        user_id:    { type: string }
+        balance:    { type: number }
+        created_at: { type: string, format: date-time }
+
+    Transaction:
+      type: object
+      properties:
+        id:         { type: string }
+        wallet_id:  { type: string }
+        amount:     { type: number }
+        type:
+          type: string
+          enum: [deposit, withdrawal, escrow_hold, payment_release, dispute_refund]
+        errand_id:  { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    AgentApplication:
+      type: object
+      properties:
+        id:               { type: string }
+        user_id:          { type: string }
+        id_image_url:     { type: string }
+        selfie_image_url: { type: string }
+        mpesa_number:     { type: string }
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: [Health]
+      responses:
+        '200':
+          description: API is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+
+  /api/session:
+    get:
+      summary: Get current session
+      tags: [Auth]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Authenticated user and session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id:       { type: string }
+                      email:    { type: string }
+                      name:     { type: string }
+                      is_agent: { type: integer, example: 0 }
+                  session:
+                    type: object
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/errands:
+    get:
+      summary: List all errands
+      tags: [Errands]
+      responses:
+        '200':
+          description: Array of errands with sender and agent names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Errand'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create an errand
+      description: Escrows `budget + fee` from the sender's wallet balance.
+      tags: [Errands]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, budget, fee, sender_id]
+              properties:
+                title:             { type: string }
+                description:       { type: string }
+                budget:            { type: number, example: 500 }
+                fee:               { type: number, example: 100 }
+                sender_id:         { type: string }
+                pickup_location:   { type: string }
+                delivery_location: { type: string }
+                category:          { type: string, example: Shopping }
+      responses:
+        '201':
+          description: Created errand
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errand'
+        '400':
+          description: Missing fields or insufficient balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/errands/update:
+    post:
+      summary: Update errand status
+      description: |
+        Moves an errand through its lifecycle. Triggers wallet side-effects:
+        - `confirmed` → releases fee to agent
+        - `disputed` → refunds budget+fee to sender
+      tags: [Errands]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [errandId, status]
+              properties:
+                errandId:
+                  type: string
+                status:
+                  type: string
+                  enum: [in_progress, proof_uploaded, confirmed, disputed]
+                agentId:
+                  type: string
+                  description: Required when setting status to in_progress
+                proofImageUrl:
+                  type: string
+                  description: Required when setting status to proof_uploaded
+      responses:
+        '200':
+          description: Updated errand
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errand'
+        '400':
+          description: Missing fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Errand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/wallet:
+    get:
+      summary: Get wallet and transactions
+      tags: [Wallet]
+      parameters:
+        - in: query
+          name: userId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Wallet balance and last 50 transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallet:
+                    $ref: '#/components/schemas/Wallet'
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Missing userId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Direct deposit or withdrawal (internal/testing)
+      tags: [Wallet]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, amount, type]
+              properties:
+                userId: { type: string }
+                amount: { type: number, example: 500 }
+                type:
+                  type: string
+                  enum: [deposit, withdrawal]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        '400':
+          description: Validation error or insufficient balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/wallet/topup:
+    post:
+      summary: Initiate M-Pesa STK push top-up
+      tags: [Wallet]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, phone, amount]
+              properties:
+                userId: { type: string }
+                phone:  { type: string, example: "0712345678" }
+                amount: { type: number, example: 500, minimum: 1 }
+      responses:
+        '200':
+          description: STK push initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkoutRequestId: { type: string }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: M-Pesa error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/wallet/mpesa-callback:
+    post:
+      summary: M-Pesa payment callback (Safaricom only)
+      description: Called by Safaricom after STK push completes. Do not call from client.
+      tags: [Wallet]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Safaricom STK callback payload
+      responses:
+        '200':
+          description: Always returns ResultCode 0 to acknowledge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ResultCode: { type: integer, example: 0 }
+
+  /api/agent/apply:
+    post:
+      summary: Submit agent application
+      description: Submit or re-submit a KYC application to become an agent.
+      tags: [Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, idImageUrl, selfieImageUrl, mpesaNumber]
+              properties:
+                userId:          { type: string }
+                idImageUrl:      { type: string, format: uri }
+                selfieImageUrl:  { type: string, format: uri }
+                mpesaNumber:
+                  type: string
+                  pattern: '^0[17]\d{8}$'
+                  example: "0712345678"
+      responses:
+        '201':
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentApplication'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agent/status:
+    get:
+      summary: Get agent application status
+      tags: [Agent]
+      parameters:
+        - in: query
+          name: userId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current application status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [none, pending, approved, rejected]
+        '400':
+          description: Missing userId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agent/approve:
+    post:
+      summary: Approve or reject an agent application (internal admin)
+      tags: [Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, approved]
+              properties:
+                userId:   { type: string }
+                approved: { type: boolean }
+      responses:
+        '200':
+          description: Application updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:     { type: boolean }
+                  status: { type: string, enum: [approved, rejected] }
+        '400':
+          description: Missing userId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

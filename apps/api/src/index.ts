@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth';
 import errandsRouter from './routes/errands';
@@ -35,6 +38,10 @@ app.use('/api/session', sessionRouter);
 app.use('/api/agent', agentRouter);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// Swagger UI — accessible at /api/docs
+const swaggerDocument = YAML.load(path.join(__dirname, 'openapi.yaml'));
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`);
