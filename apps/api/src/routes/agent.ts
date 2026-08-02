@@ -59,12 +59,12 @@ router.post('/approve', async (req: Request, res: Response) => {
 
   try {
     await sql`
-      UPDATE agent_applications SET status = ${newStatus}, updated_at = NOW()
+      UPDATE agent_applications SET status = ${newStatus}, updated_at = datetime('now')
       WHERE user_id = ${userId}
     `;
     if (approved) {
       // Mark the user as a verified agent in the user table
-      await sql`UPDATE "user" SET is_agent = true WHERE id = ${userId}`;
+      await sql`UPDATE "user" SET is_agent = 1 WHERE id = ${userId}`;
     }
     res.json({ ok: true, status: newStatus });
   } catch (err) {
