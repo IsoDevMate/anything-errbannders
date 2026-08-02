@@ -1,9 +1,10 @@
-import { createClient } from '@libsql/client';
+import { createClient, type Client } from '@libsql/client';
+import { getLibsqlConfig } from './db-config';
 
-const client = createClient({
-  url: process.env.LIBSQL_URL!,
-  authToken: process.env.LIBSQL_AUTH_TOKEN!,
-});
+const config = getLibsqlConfig();
+const client: Client = createClient(
+  config.authToken ? { url: config.url, authToken: config.authToken } : { url: config.url }
+);
 
 // Tagged template wrapper — matches the neon `sql` interface used throughout routes
 async function sql(strings: TemplateStringsArray, ...values: unknown[]): Promise<any[]> {
@@ -20,6 +21,10 @@ async function sql(strings: TemplateStringsArray, ...values: unknown[]): Promise
 
   const result = await client.execute({ sql: query, args: args as any[] });
   return result.rows as any[];
+}
+
+export async function execRaw(query: string): Promise<void> {
+  await client.execute(query);
 }
 
 export default sql;
