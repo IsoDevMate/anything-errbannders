@@ -54,6 +54,13 @@ app.use('/api/reviews', reviewsRouter);
 
 app.get('/health', (_req, res) => res.json({ ok: true, db: 'ready' }));
 
+// Admin panel — approve/reject agents (password = ADMIN_SECRET)
+const publicDir = path.join(__dirname, '..', 'public');
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(publicDir, 'admin.html'));
+});
+app.use('/admin', express.static(publicDir));
+
 // Swagger UI — accessible at /api/docs
 const swaggerDocument = YAML.load(path.join(__dirname, 'openapi.yaml'));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
@@ -119,6 +126,10 @@ async function ensureSchema() {
       agent_id TEXT,
       pickup_location TEXT,
       delivery_location TEXT,
+      pickup_lat REAL,
+      pickup_lng REAL,
+      delivery_lat REAL,
+      delivery_lng REAL,
       status TEXT NOT NULL DEFAULT 'pending',
       proof_image_url TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

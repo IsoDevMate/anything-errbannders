@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ErrandEconomy Admin</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4d;
+      --text: #e8eef5;
+      --muted: #8b9bb0;
+      --green: #10b981;
+      --red: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 1.25rem; }
+    .muted { color: var(--muted); font-size: 0.875rem; }
+    main { padding: 24px; max-width: 960px; margin: 0 auto; }
+    .gate {
+      max-width: 420px;
+      margin: 80px auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .gate label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .gate input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      margin-bottom: 14px;
+      font-size: 1rem;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .btn-primary { background: var(--green); color: #042f1e; width: 100%; padding: 12px; }
+    .btn-approve { background: var(--green); color: #042f1e; }
+    .btn-reject { background: var(--red); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .roles {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 700px) { .roles { grid-template-columns: 1fr; } }
+    .role-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .role-card h3 { margin: 0 0 8px; font-size: 1rem; }
+    .role-card p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card h3 { margin: 0 0 6px; font-size: 1rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
+    .images { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+    .images img {
+      width: 120px; height: 120px; object-fit: cover;
+      border-radius: 10px; border: 1px solid var(--border); background: #000;
+    }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--amber);
+      margin-bottom: 8px;
+    }
+    .empty { color: var(--muted); text-align: center; padding: 40px 16px; }
+    .error { color: var(--red); margin-top: 8px; font-size: 0.875rem; }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    code { font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate">
+    <h1 style="margin-top:0">Admin login</h1>
+    <p class="muted">Enter the admin secret from Render env <code>ADMIN_SECRET</code>. Default for testing: <code>errands-admin</code></p>
+    <label for="secret">Admin secret</label>
+    <input id="secret" type="password" placeholder="ADMIN_SECRET" />
+    <button class="btn-primary" id="loginBtn" type="button">Open admin</button>
+    <p class="error" id="gateError"></p>
+  </div>
+
+  <div id="app" style="display:none">
+    <header>
+      <div>
+        <h1>ErrandEconomy Admin</h1>
+        <div class="muted">Approve agents · three sides: Sender / Agent / Admin</div>
+      </div>
+      <div class="toolbar">
+        <button class="btn-ghost" id="refreshBtn" type="button">Refresh</button>
+        <button class="btn-ghost" id="logoutBtn" type="button">Log out</button>
+      </div>
+    </header>
+    <main>
+      <div class="roles">
+        <div class="role-card">
+          <h3>1. Sender (Client)</h3>
+          <p>Creates errands, funds wallet, confirms delivery or disputes. Sees live GPS after an agent accepts.</p>
+        </div>
+        <div class="role-card">
+          <h3>2. Agent</h3>
+          <p>Applies with ID + selfie → waits for your approval → accepts errands → shares live GPS → uploads proof.</p>
+        </div>
+        <div class="role-card">
+          <h3>3. Admin (you)</h3>
+          <p>Review pending applications below. Approve sets <code>is_agent=true</code>. Reject lets them re-apply.</p>
+        </div>
+      </div>
+
+      <h2 style="margin: 0 0 12px; font-size: 1.1rem;">Pending agent applications</h2>
+      <div id="list" class="empty">Loading…</div>
+      <p class="error" id="listError"></p>
+    </main>
+  </div>
+
+  <script>
+    const API = location.origin;
+    const SECRET_KEY = 'errandeconomy_admin_secret';
+
+    function getSecret() {
+      return sessionStorage.getItem(SECRET_KEY) || '';
+    }
+    function setSecret(s) {
+      sessionStorage.setItem(SECRET_KEY, s);
+    }
+    function clearSecret() {
+      sessionStorage.removeItem(SECRET_KEY);
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    function escapeAttr(s) {
+      return escapeHtml(s).replace(/'/g, '&#39;');
+    }
+
+    async function apiFetch(path, options = {}) {
+      const headers = new Headers(options.headers || {});
+      headers.set('Content-Type', 'application/json');
+      headers.set('X-Admin-Secret', getSecret());
+      const res = await fetch(API + path, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    }
+
+    function showApp() {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      loadPending();
+    }
+
+    function showGate(msg) {
+      document.getElementById('gate').style.display = 'block';
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('gateError').textContent = msg || '';
+    }
+
+    async function loadPending() {
+      const list = document.getElementById('list');
+      const errEl = document.getElementById('listError');
+      errEl.textContent = '';
+      list.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const rows = await apiFetch('/api/agent/pending');
+        if (!Array.isArray(rows) || !rows.length) {
+          list.innerHTML = '<div class="empty">No pending applications. When someone applies in the app, they show up here.</div>';
+          return;
+        }
+        list.innerHTML = '';
+        rows.forEach((row) => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML =
+            '<div class="badge">pending</div>' +
+            '<h3>' + escapeHtml(row.user_name || 'Unknown user') + '</h3>' +
+            '<div class="meta">' + escapeHtml(row.user_email || '') + '</div>' +
+            '<div class="meta">User ID: <code>' + escapeHtml(row.user_id) + '</code></div>' +
+            '<div class="meta">M-Pesa: <strong>' + escapeHtml(row.mpesa_number || '—') + '</strong></div>' +
+            '<div class="meta">Applied: ' + escapeHtml(row.created_at || row.updated_at || '') + '</div>' +
+            '<div class="images">' +
+              (row.id_image_url
+                ? '<a href="' + escapeAttr(row.id_image_url) + '" target="_blank" rel="noopener"><img src="' + escapeAttr(row.id_image_url) + '" alt="ID" /></a>'
+                : '') +
+              (row.selfie_image_url
+                ? '<a href="' + escapeAttr(row.selfie_image_url) + '" target="_blank" rel="noopener"><img src="' + escapeAttr(row.selfie_image_url) + '" alt="Selfie" /></a>'
+                : '') +
+            '</div>' +
+            '<div class="actions">' +
+              '<button class="btn-approve" data-approve="true" data-uid="' + escapeAttr(row.user_id) + '">Approve</button>' +
+              '<button class="btn-reject" data-approve="false" data-uid="' + escapeAttr(row.user_id) + '">Reject</button>' +
+            '</div>';
+          list.appendChild(card);
+        });
+        list.querySelectorAll('button[data-uid]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-uid');
+            const approved = btn.getAttribute('data-approve') === 'true';
+            btn.disabled = true;
+            try {
+              await apiFetch('/api/agent/approve', {
+                method: 'POST',
+                body: JSON.stringify({ userId: userId, approved: approved }),
+              });
+              await loadPending();
+            } catch (e) {
+              errEl.textContent = e.message;
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (e) {
+        list.innerHTML = '';
+        errEl.textContent = e.message;
+      }
+    }
+
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const secret = document.getElementById('secret').value.trim();
+      if (!secret) {
+        document.getElementById('gateError').textContent = 'Enter the admin secret';
+        return;
+      }
+      setSecret(secret);
+      try {
+        await apiFetch('/api/agent/pending');
+        showApp();
+      } catch (e) {
+        clearSecret();
+        document.getElementById('gateError').textContent = e.message || 'Invalid secret';
+      }
+    });
+    document.getElementById('refreshBtn').addEventListener('click', loadPending);
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      clearSecret();
+      showGate('');
+    });
+
+    if (getSecret()) {
+      apiFetch('/api/agent/pending').then(showApp).catch(() => {
+        clearSecret();
+        showGate('');
+      });
+    }
+  </script>
+</body>
+</html>
+

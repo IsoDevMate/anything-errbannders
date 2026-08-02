@@ -1,7 +1,18 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import sql from '../db';
 
 const router = Router();
+
+/** Admin gate: header X-Admin-Secret must match env ADMIN_SECRET (default: errands-admin). */
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const expected = process.env.ADMIN_SECRET || 'errands-admin';
+  const provided = req.header('X-Admin-Secret') || '';
+  if (!provided || provided !== expected) {
+    res.status(401).json({ error: 'Unauthorized — set X-Admin-Secret to ADMIN_SECRET' });
+    return;
+  }
+  next();
+}
 
 // POST /api/agent/apply — submit agent application
 router.post('/apply', async (req: Request, res: Response) => {
@@ -50,8 +61,8 @@ router.get('/status', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/agent/approve — internal: approve or reject an application
-router.post('/approve', async (req: Request, res: Response) => {
+// POST /api/agent/approve — admin: approve or reject an application
+router.post('/approve', requireAdmin, async (req: Request, res: Response) => {
   const { userId, approved } = req.body;
   if (!userId) { res.status(400).json({ error: 'userId required' }); return; }
 
@@ -63,8 +74,9 @@ router.post('/approve', async (req: Request, res: Response) => {
       WHERE user_id = ${userId}
     `;
     if (approved) {
-      // Mark the user as a verified agent in the user table
       await sql`UPDATE "user" SET is_agent = 1 WHERE id = ${userId}`;
+    } else {
+      await sql`UPDATE "user" SET is_agent = 0 WHERE id = ${userId}`;
     }
     res.json({ ok: true, status: newStatus });
   } catch (err) {
@@ -75,7 +87,7 @@ router.post('/approve', async (req: Request, res: Response) => {
 
 
 // GET /api/agent/pending — list pending applications (admin)
-router.get('/pending', async (_req: Request, res: Response) => {
+router.get('/pending', requireAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await sql`
       SELECT a.*, u.name AS user_name, u.email AS user_email
